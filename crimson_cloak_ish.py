@@ -135,6 +135,90 @@ def open_url_scheme(url):
     except:
         return False
 
+
+def discover_tools():
+    tools = []
+    home = os.path.expanduser("~")
+    sigs = [
+        ("Huginn & Muninn", ["~/Huginn-Muninn/index.html","~/Huginn-Muninn/huginn.py"], "Tactical web platform", "recon", "huginn"),
+        ("OmnINT", ["~/OmnINT/omnint_module1.py","~/OmnINT/omnint.py"], "OSINT deep-paint engine", "intel", "omnint"),
+        ("Daedalus", ["~/Daedalus/daedalus.py","~/Daedalus/hardware/__init__.py"], "Zero-day hardware lab", "exploit", "daedalus"),
+        ("Argus Eye", ["~/argus_eye.py","~/Argus-Eye-Repo/argus_eye.py"], "Network scanner", "recon", "argus"),
+        ("Neural Chan", ["~/neural-chan/main.py","~/neural-chan/neural_chan.py"], "Multi-agent AI brain", "ai", "neural"),
+        ("Crimson Cloud", ["~/Crimson-Cloud-Kali-iOS/install.sh","~/Crimson-Cloud-Kali-iOS/cc-connect"], "Cloud Kali bridge", "cloud", "crimson-cloud"),
+        ("SynChan OS", ["~/SynChan/synchan.py","~/synchan_os/main.py"], "Mobile OS interface", "comms", "synchan"),
+        ("Ophelia", ["~/ophelia.py","~/Ophelia/ophelia.py"], "Fingerprint engine", "recon", "ophelia"),
+        ("Hecate", ["~/Hecate/hecate.py","~/heecate.py"], "OSINT platform", "intel", "hecate"),
+        ("MIDAS", ["~/MIDAS/midas.py","~/midas.py"], "Financial red team", "finance", "midas"),
+    ]
+    for name, paths, desc, cat, tid in sigs:
+        entry = next((os.path.expanduser(p) for p in paths if os.path.exists(os.path.expanduser(p))), None)
+        if entry:
+            tools.append({"id": tid, "name": name, "installed": True, "entry": entry,
+                          "description": desc, "category": cat, "source": "signature",
+                          "shortcuts": SHORTCUTS.get(tid, [])})
+    for root, dirs, files in os.walk(home):
+        if root.replace(home, "").count(os.sep) > 3:
+            del dirs[:]; continue
+        if "argus.manifest" in files:
+            try:
+                with open(os.path.join(root, "argus.manifest")) as f2:
+                    m = json.load(f2)
+                m.update({"installed": True, "source": "manifest",
+                           "id": m.get("id", os.path.basename(root).lower()),
+                           "shortcuts": m.get("shortcuts", SHORTCUTS.get(m.get("id"), []))})
+                tools.append(m)
+            except Exception as e:
+                log(f"[DISC] Bad manifest: {e}")
+    return tools
+
+def refresh_registry():
+    global TOOL_REGISTRY
+    TOOL_REGISTRY = discover_tools()
+    log(f"[DISC] {len(TOOL_REGISTRY)} tools registered")
+    return TOOL_REGISTRY
+
+def auto_tunnel():
+    if not os.path.exists(TUNNEL_CONF):
+        return
+    try:
+        cfg = {}
+        with open(TUNNEL_CONF) as f2:
+            for line in f2:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    cfg[k.strip()] = v.strip()
+        if cfg.get("AUTO_START", "no").lower() != "yes":
+            return
+        if os.path.exists(TUNNEL_PID):
+            try:
+                with open(TUNNEL_PID) as fh:
+                    pid = int(fh.read().strip())
+                os.kill(pid, 0)
+                log("[TUNNEL] Already active")
+                return
+            except:
+                pass
+        host = cfg.get("REMOTE_HOST", "")
+        user = cfg.get("REMOTE_USER", "")
+        if not host or not user:
+            return
+        rport = cfg.get("REMOTE_PORT", "22")
+        lh = cfg.get("LOCAL_HTTP", "8088")
+        lw = cfg.get("LOCAL_WS", "8089")
+        rbh = cfg.get("REMOTE_BIND_HTTP", "9090")
+        rbw = cfg.get("REMOTE_BIND_WS", "9091")
+        cmd = (f"ssh -oStrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+               f"-o ServerAliveInterval=30 -o ServerAliveCountMax=3 "
+               f"-R {rbh}:localhost:{lh} -R {rbw}:localhost:{lw} "
+               f"{user}@{host} -p {rport} -N -f")
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with open(TUNNEL_PID, "w") as fh:
+            fh.write(str(proc.pid))
+        log(f"[TUNNEL] Auto-started to {user}@{host}")
+    except Exception as e:
+        log(f"[TUNNEL] Auto-start failed: {e}")
+
 def clipboard_sync_loop():
     global LAST_CLIPBOARD
     while True:
