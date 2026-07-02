@@ -1,0 +1,22 @@
+#!/bin/ash
+pkill -9 -f crimson_cloak_ish.py 2>/dev/null
+sleep 2
+if ps | grep crimson | grep -v grep > /dev/null; then
+  echo "[!] Zombies still alive"
+  exit 1
+fi
+rm -f ~/.argus/wrapper.log
+nohup python3 ~/crimson_cloak_ish.py > ~/.argus/wrapper.log 2>&1 &
+PID=$!
+for i in 1 2 3 4 5 6; do
+  sleep 2
+  RESP=$(curl -s http://127.0.0.1:8088/health 2>/dev/null)
+  if echo "$RESP" | grep -q "alive"; then
+    echo "$RESP" | python3 -m json.tool
+    echo "[+] Crimson Cloak ONLINE (PID: $PID)"
+    echo "[i] Dashboard: http://127.0.0.1:8088"
+    exit 0
+  fi
+done
+echo "[!] Start failed — last log:"
+tail -15 ~/.argus/wrapper.log
